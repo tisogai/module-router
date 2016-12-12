@@ -630,6 +630,62 @@ static void replace_whitespace_with_hash(char* string) {
 }
 
 /**
+ * @brief This function validates the name, if returns false if pointer is
+ * NULL or the name is blank.
+ * @param name: pointer to the name
+ * @ret bool: true if name is valid and vice versa.
+ */
+static bool is_valid_name(const char* name )
+{
+    bool is_valid = true;
+    if((name == NULL) || (name[0] == '\0'))
+    {
+        is_valid = false;
+    }
+    return is_valid;
+}
+
+/**
+ * @brief This function returns the AudioManager name from the pulseaudio
+ * properties list . First check if the media.role property is present and
+ * not blank, then use media.role, Else use application.name.
+ * @param: sink_input: The pointer to the pulseaudio sink_input.
+ *         am_name: The audiomanager name of the sink_input.
+ */
+static void get_am_name_from_media_role(pa_proplist* proplist, char* am_name)
+{
+    char *name_copy = (char*) pa_proplist_gets( proplist,
+                                                PA_PROP_MEDIA_ROLE);
+    if(!is_valid_name(name_copy))
+    {
+        name_copy = (char*) pa_proplist_gets( proplist,
+                                              PA_PROP_APPLICATION_NAME);
+    }
+    if(is_valid_name(name_copy))
+    {
+        strncpy(am_name, name_copy, AM_MAX_NAME_LENGTH);
+        replace_whitespace_with_hash(am_name);
+    }
+}
+
+/**
+ * @brief This function returns the AudioManager name for sink from the pulseaudio
+ * proplist .
+ * @param: sink: The pointer to the pulseaudio sink.
+ *         am_name: The audiomanager name of the sink.
+ */
+static void get_am_name_from_device_description(pa_proplist* proplist, char* am_name)
+{
+    char *sink_name_copy = (char*) pa_proplist_gets(proplist,
+                                                    PA_PROP_DEVICE_DESCRIPTION);
+    if(is_valid_name(sink_name_copy))
+    {
+        strncpy(am_name, sink_name_copy, AM_MAX_NAME_LENGTH);
+        replace_whitespace_with_hash(am_name);
+    }
+}
+
+/**
  * @brief This function sets the volume in a pulseaudio volume structure.
  * @param: destchannelVolume: The pointer to the pulseaudio volume structure.
  *         num_channels: The number of channels to be set.
@@ -663,15 +719,14 @@ static pa_hook_result_t hook_callback_sink_input_put(pa_core *c, pa_sink_input *
     pa_sink_input_set_mute(sink_input, true, false);
     pa_sink_input_cork(sink_input, true);
 
-    char *source_name_dup = (char*) pa_proplist_gets(sink_input->proplist, PA_PROP_MEDIA_NAME);
     char source_name[AM_MAX_NAME_LENGTH];
-    strncpy(source_name, source_name_dup, AM_MAX_NAME_LENGTH);
-    pa_assert(source_name);
-    replace_whitespace_with_hash(source_name);
-    char* sink_name_dup = (char*) pa_proplist_gets(sink_input->sink->proplist, PA_PROP_DEVICE_DESCRIPTION);
+    memset(source_name,0,sizeof(source_name));
+    get_am_name_from_media_role(sink_input->proplist,source_name);
+
     char sink_name[AM_MAX_NAME_LENGTH];
-    strncpy(sink_name, sink_name_dup, AM_MAX_NAME_LENGTH);
-    replace_whitespace_with_hash(sink_name);
+    memset(sink_name,0,sizeof(sink_name));
+    get_am_name_from_device_description(sink_input->sink->proplist,sink_name);
+
     pa_log_debug("hook_callback_sink_input_put source Name=%s sink_name=%s", source_name, sink_name);
 
     uint16_t source_id = am_name_to_id(source_name, u->source_map);
@@ -772,10 +827,10 @@ static pa_hook_result_t hook_callback_source_output_put(pa_core *c, pa_source_ou
     pa_assert(u);
     bool corked = false;
     pa_source_output_state_t state;
-    char *sink_name_dup = (char*) pa_proplist_gets(source_output->proplist, PA_PROP_MEDIA_NAME);
+
     char sink_name[AM_MAX_NAME_LENGTH];
-    strncpy(sink_name, sink_name_dup, AM_MAX_NAME_LENGTH);
-    replace_whitespace_with_hash(sink_name);
+    memset(sink_name,0,sizeof(sink_name));
+    get_am_name_from_media_role(source_output->proplist, sink_name);
     // in case of implicit loopback module loading this event should be ignored.
     if ( strstr(sink_name, "Loopback#to") == NULL ) {
 
@@ -824,14 +879,12 @@ static pa_hook_result_t hook_callback_sink_input_unlink(pa_core *c, pa_sink_inpu
     pa_assert(sink_input);
     pa_assert(u);
     bool corked = false;
-    char *source_name_dup = (char*) pa_proplist_gets(sink_input->proplist, PA_PROP_MEDIA_NAME);
-    pa_assert(source_name_dup);
     char source_name[AM_MAX_NAME_LENGTH];
-    strncpy(source_name, source_name_dup, AM_MAX_NAME_LENGTH);
-    replace_whitespace_with_hash(source_name);
+    memset(source_name,0,sizeof(source_name));
+    get_am_name_from_media_role(sink_input->proplist,source_name);
     uint16_t source_id = get_id_from_sink_input(sink_input, u->source_map);
     pa_log_debug("source name = %s source id: %d", source_name, source_id);
-    if ( (source_name != NULL) && (source_id == 0) && strstr(source_name, "Loopback from") != NULL ) {
+    if ((source_name != NULL) && (source_id == 0) && strstr(source_name, "Loopback from") != NULL ) {
         char description[256];
         memset(description, 0, sizeof(description));
         sscanf(source_name, "Loopback from %s", description);
@@ -882,11 +935,9 @@ static pa_hook_result_t hook_callback_source_output_unlink(pa_core *c, pa_source
     pa_assert(source_output);
     pa_assert(u);
     bool corked = false;
-    char *sink_name_dup = (char*) pa_proplist_gets(source_output->proplist, PA_PROP_MEDIA_NAME);
-    pa_assert(sink_name_dup);
     char sink_name[AM_MAX_NAME_LENGTH];
-    strncpy(sink_name, sink_name_dup, AM_MAX_NAME_LENGTH);
-    replace_whitespace_with_hash(sink_name);
+    memset(sink_name,0,sizeof(sink_name));
+    get_am_name_from_media_role(source_output->proplist,sink_name);
     pa_log_debug("hook_callback_source_output_unlink sink name = %s", sink_name);
 
     if ( strstr(sink_name, "Loopback to") == NULL ) {
@@ -933,8 +984,7 @@ static pa_hook_result_t hook_callback_sink_new(pa_core *c, pa_sink *sink, struct
     pa_assert(u);
 
     memset(&sink_register, 0, sizeof(am_sink_register_t));
-    strncpy(sink_register.name, pa_proplist_gets(sink->proplist, PA_PROP_DEVICE_DESCRIPTION), AM_MAX_NAME_LENGTH);
-    replace_whitespace_with_hash(sink_register.name);
+    get_am_name_from_device_description(sink->proplist,sink_register.name);
     if ( 0 == am_name_to_id(sink_register.name, u->sink_map) ) {
         pa_log_debug("sink Name=%s", sink_register.name);
         sink_register.domain_id = ((am_domain_register_t*) u->domain)->domain_id;
@@ -986,8 +1036,7 @@ static pa_hook_result_t hook_callback_source_new(pa_core *c, pa_source *source, 
     pa_assert(u);
 
     memset(&source_register, 0, sizeof(am_source_register_t));
-    strncpy(source_register.name, pa_proplist_gets(source->proplist, PA_PROP_DEVICE_DESCRIPTION), AM_MAX_NAME_LENGTH);
-    replace_whitespace_with_hash(source_register.name);
+    get_am_name_from_device_description(source->proplist,source_register.name);
     if ( 0 != am_name_to_id(source_register.name, u->source_map) ) {
         pa_log_debug("source name=%s", source_register.name);
         source_register.domain_id = ((am_domain_register_t*) (u->domain))->domain_id;
@@ -1033,15 +1082,13 @@ static pa_hook_result_t hook_callback_source_new(pa_core *c, pa_source *source, 
 static pa_hook_result_t hook_callback_sink_input_new(pa_core *c, pa_sink_input_new_data *new_data, struct userdata *u) {
     ROUTER_FUNCTION_ENTRY;
     bool already_present = false;
-    char* source_name_dup = (char*) pa_proplist_gets(new_data->proplist, PA_PROP_MEDIA_NAME);
-    char source_name[AM_MAX_NAME_LENGTH];
 
     pa_assert(c);
     pa_assert(new_data);
     pa_assert(u);
-
-    strncpy(source_name, source_name_dup, AM_MAX_NAME_LENGTH);
-    replace_whitespace_with_hash(source_name);
+    char source_name[AM_MAX_NAME_LENGTH];
+    memset(source_name,0,sizeof(source_name));
+    get_am_name_from_media_role(new_data->proplist,source_name);
     if ( (source_name == NULL) || (0 != am_name_to_id(source_name, u->source_map))
             || (NULL != strstr(source_name, "Loopback from")) ) {
 #if MODULE_ROUTER_EXTRA_LOGS
@@ -1120,15 +1167,13 @@ static pa_hook_result_t hook_callback_source_output_new(pa_core *c, pa_source_ou
         struct userdata *u) {
     ROUTER_FUNCTION_ENTRY;
     bool already_present = false;
-    char* sink_name_dup = (char*) pa_proplist_gets(new_data->proplist, PA_PROP_MEDIA_NAME);
-    char sink_name[AM_MAX_NAME_LENGTH];
 
     pa_assert(c);
     pa_assert(new_data);
     pa_assert(u);
-
-    strncpy(sink_name, sink_name_dup, AM_MAX_NAME_LENGTH);
-    replace_whitespace_with_hash(sink_name);
+    char sink_name[AM_MAX_NAME_LENGTH];
+    memset(sink_name,0,sizeof(sink_name));
+    get_am_name_from_media_role(new_data->proplist,sink_name);
     if ( (sink_name == NULL) || (0 != am_name_to_id(sink_name, u->sink_map))
             || (NULL != strstr(sink_name, "Loopback from")) ) {
 #if MODULE_ROUTER_EXTRA_LOGS
