@@ -619,14 +619,14 @@ static pa_module* load_loopback_module(struct userdata*u, uint16_t source_id, ui
  */
 static void replace_whitespace_with_hash(char* string) {
     int counter = 0;
-    pa_log_error("%s", string);
+    pa_log_info("%s", string);
     while ( string[counter] != '\0' ) {
         if ( string[counter] == ' ' ) {
             string[counter] = '#';
         }
         counter++;
     }
-    pa_log_error("%s", string);
+    pa_log_info("%s", string);
 }
 
 /**
@@ -730,12 +730,20 @@ static void set_pa_volume(pa_cvolume* destchannelVolume, int num_channels, uint3
  * @return pa_hook_result: The result of the hook function.
  */
 static pa_hook_result_t hook_callback_sink_input_put(pa_core *c, pa_sink_input *sink_input, struct userdata *u) {
-    ROUTER_FUNCTION_ENTRY;
+    pa_log_info("hook_callback_sink_input_put index=%d",sink_input->index);
     pa_assert(c);
     pa_assert(u);
     pa_assert(sink_input);
     bool corked = false;
     pa_sink_input_state_t state;
+
+    char* media_name = (char*) pa_proplist_gets(sink_input->proplist,PA_PROP_MEDIA_NAME);
+
+    if((media_name != NULL) && (0==strcmp(media_name,"pulsesink probe")))
+    {
+    	pa_log_info("hook_callback_sink_input_put probe found");
+    	return PA_HOOK_OK;
+    }
 
     pa_sink_input_set_mute(sink_input, true, false);
     pa_sink_input_cork(sink_input, true);
@@ -767,17 +775,28 @@ static pa_hook_result_t hook_callback_sink_input_put(pa_core *c, pa_sink_input *
     if ( (source_id != 0) && (sink_id != 0) ) {
         am_connect_t* con = get_connection_from_src_sink(u, source_id, sink_id);
         if ( (con != NULL) && (source_index != -1) ) {
+        /**
+         * This was added for AM aware application support if application is AM aware
+         * it would first send the AM connect request and then create the pulseaudio
+         * stream. Router module has to send the dummy ackConnect to the audiomanager
+         * and in sink_input_put we check if connection is already present then start the stream.
+         * Now for AM aware application the steps would be
+         * 1. create a stream in corked state
+         * 2. send AM connect request
+         * 3. start playing if connection state changed to CS_CONNECTED.
+         */
+#if 0
             if ( u->source_map[source_index].source_state == SS_ON ) {
                 if ( sink_input->muted == true ) {
                     pa_sink_input_set_mute(sink_input, false, false);
                 }
                 pa_sink_input_cork(sink_input, false);
             }
-            ROUTER_FUNCTION_EXIT;
-            return PA_HOOK_OK;
+#endif
+            pa_log_info("connection already present ");
         }
     }
-    if ( source_id != 0 ) {
+    else if ( source_id != 0 ) {
         //Check if the source is connected to any other sink then the requested one in put request.
         am_connect_t* con = get_connection_from_source(u, source_id);
         if ( con != NULL ) {
@@ -792,6 +811,7 @@ static pa_hook_result_t hook_callback_sink_input_put(pa_core *c, pa_sink_input *
                     pa_sink_input_set_mute(sink_input, false, false);
                     pa_sink_input_cork(sink_input, false);
                 }
+                pa_log_info("connection already present moving to new");
                 ROUTER_FUNCTION_EXIT;
                 return PA_HOOK_OK;
             }
@@ -822,6 +842,7 @@ static pa_hook_result_t hook_callback_sink_input_put(pa_core *c, pa_sink_input *
     connection_data.delay = 0;
     connection_data.state = 0;
     if ( (connection_data.source_id != 0) && (connection_data.sink_id != 0) ) {
+    	pa_log_info("AudioManager connect request");
         router_dbusif_command_connect(u, &connection_data);
     }
 
@@ -896,9 +917,18 @@ static pa_hook_result_t hook_callback_source_output_put(pa_core *c, pa_source_ou
  */
 static pa_hook_result_t hook_callback_sink_input_unlink(pa_core *c, pa_sink_input *sink_input, struct userdata *u) {
     ROUTER_FUNCTION_ENTRY;
+    pa_log_info("hook_callback_sink_input_unlink index=%d",sink_input->index);
     pa_assert(c);
     pa_assert(sink_input);
     pa_assert(u);
+
+    char* media_name = (char*) pa_proplist_gets(sink_input->proplist,PA_PROP_MEDIA_NAME);
+     if((media_name != NULL) && (0 == strcmp(media_name,"pulsesink probe")))
+     {
+    	pa_log_info("hook_callback_sink_input_unlink probe found");
+     	return PA_HOOK_OK;
+     }
+
     bool corked = false;
     char source_name[AM_MAX_NAME_LENGTH];
     memset(source_name,0,sizeof(source_name));
@@ -1102,11 +1132,24 @@ static pa_hook_result_t hook_callback_source_new(pa_core *c, pa_source *source, 
 
 static pa_hook_result_t hook_callback_sink_input_new(pa_core *c, pa_sink_input_new_data *new_data, struct userdata *u) {
     ROUTER_FUNCTION_ENTRY;
+
     bool already_present = false;
 
     pa_assert(c);
     pa_assert(new_data);
     pa_assert(u);
+
+    char* media_name = (char*) pa_proplist_gets(new_data->proplist,PA_PROP_MEDIA_NAME);
+    if(media_name!=NULL)
+    {
+        pa_log_info("hook_callback_sink_input_new %s",media_name);
+    }
+    if((media_name != NULL) && (0==strcmp(media_name,"pulsesink probe")))
+    {
+    	pa_log_info("hook_callback_sink_input_new pulsesink probe found");
+    	return PA_HOOK_OK;
+    }
+
     char source_name[AM_MAX_NAME_LENGTH];
     memset(source_name,0,sizeof(source_name));
     get_am_name_for_sink_source_stream(new_data->proplist,source_name);
@@ -1389,7 +1432,7 @@ static void cb_routing_peek_sink_reply(struct userdata *u, int status, void* dat
     pa_assert(u);
     pa_assert(sink);
 
-    pa_log_error("sink name=%s", sink->name);
+    pa_log_info("sink name=%s", sink->name);
     int index = am_name_to_map_index(sink->name, u->sink_map);
     if ( status == E_OK ) {
         int index = get_map_index_from_id(sink->sink_id, u->sink_map);
