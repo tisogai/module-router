@@ -643,6 +643,27 @@ static bool is_valid_name(const char* name ) {
     return is_valid;
 }
 
+static bool is_stream_for_probe(pa_proplist* proplist)
+{
+    /*
+     * qt framework uses gstreamer for audio playback. Gstreamer creates one stream with media.name
+     * property 'pulseaudio probe', to get the capability, I guess. These streams are
+     * never used for actual playback. For playback a stream with name playback stream is
+     * created.
+     * Since the application.name for probe and playback stream are same. The AM is not
+     * able to distinguish both streams. As a workaround we filter out the probe streams now.
+     */
+    bool probestream =false;
+    char* media_name = (char*) pa_proplist_gets(proplist,PA_PROP_MEDIA_NAME);
+
+    if((media_name != NULL) && (0==strcmp(media_name,"pulsesink probe")))
+    {
+        pa_log_info("is_stream_for_probe probe found");
+        probestream = true;
+    }
+    return probestream;
+}
+
 /**
  * @brief This function returns the AudioManager name from the pulseaudio
  * properties media.role.
@@ -737,11 +758,8 @@ static pa_hook_result_t hook_callback_sink_input_put(pa_core *c, pa_sink_input *
     bool corked = false;
     pa_sink_input_state_t state;
 
-    char* media_name = (char*) pa_proplist_gets(sink_input->proplist,PA_PROP_MEDIA_NAME);
-
-    if((media_name != NULL) && (0==strcmp(media_name,"pulsesink probe")))
+    if(true == is_stream_for_probe(sink_input->proplist))
     {
-    	pa_log_info("hook_callback_sink_input_put probe found");
     	return PA_HOOK_OK;
     }
 
@@ -922,12 +940,10 @@ static pa_hook_result_t hook_callback_sink_input_unlink(pa_core *c, pa_sink_inpu
     pa_assert(sink_input);
     pa_assert(u);
 
-    char* media_name = (char*) pa_proplist_gets(sink_input->proplist,PA_PROP_MEDIA_NAME);
-     if((media_name != NULL) && (0 == strcmp(media_name,"pulsesink probe")))
-     {
-    	pa_log_info("hook_callback_sink_input_unlink probe found");
-     	return PA_HOOK_OK;
-     }
+    if(true == is_stream_for_probe(sink_input->proplist))
+    {
+        return PA_HOOK_OK;
+    }
 
     bool corked = false;
     char source_name[AM_MAX_NAME_LENGTH];
@@ -1139,15 +1155,9 @@ static pa_hook_result_t hook_callback_sink_input_new(pa_core *c, pa_sink_input_n
     pa_assert(new_data);
     pa_assert(u);
 
-    char* media_name = (char*) pa_proplist_gets(new_data->proplist,PA_PROP_MEDIA_NAME);
-    if(media_name!=NULL)
+    if(true == is_stream_for_probe(new_data->proplist))
     {
-        pa_log_info("hook_callback_sink_input_new %s",media_name);
-    }
-    if((media_name != NULL) && (0==strcmp(media_name,"pulsesink probe")))
-    {
-    	pa_log_info("hook_callback_sink_input_new pulsesink probe found");
-    	return PA_HOOK_OK;
+        return PA_HOOK_OK;
     }
 
     char source_name[AM_MAX_NAME_LENGTH];
