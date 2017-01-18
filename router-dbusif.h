@@ -173,7 +173,7 @@ typedef struct {
 } router_init_data_t;
 
 router_dbusif *router_dbusif_init(struct userdata *u, router_init_data_t* init_data);
-void router_dbusif_done(struct router_dbusif *routerif);
+void router_dbusif_done(struct userdata *u);
 
 int router_dbusif_command_connect(struct userdata *u, am_main_connection_t* data);
 int router_dbusif_command_disconnect(struct userdata *u, am_disconnect_t* data);

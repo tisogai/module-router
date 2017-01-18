@@ -636,10 +636,19 @@ static void replace_whitespace_with_hash(char* string) {
  * @ret bool: true if name is valid and vice versa.
  */
 static bool is_valid_name(const char* name ) {
+	ROUTER_FUNCTION_ENTRY;
     bool is_valid = true;
-    if((name == NULL) || (name[0] == '\0')) {
-        is_valid = false;
+    if((name == NULL)) {
+        return false;
     }
+    if(name != NULL)
+    {
+    	if(name[0] == '\0')
+    	{
+    		return false;
+    	}
+    }
+    ROUTER_FUNCTION_EXIT;
     return is_valid;
 }
 
@@ -719,12 +728,17 @@ static void get_am_name_for_sink_source_stream(pa_proplist* proplist, char* am_n
  *         am_name: The audiomanager name of the sink.
  */
 static void get_am_name_from_device_description(pa_proplist* proplist, char* am_name) {
+	ROUTER_FUNCTION_ENTRY;
+	if(proplist != NULL)
+	{
     char *sink_name_copy = (char*) pa_proplist_gets(proplist,
                                                     PA_PROP_DEVICE_DESCRIPTION);
     if(is_valid_name(sink_name_copy)) {
         strncpy(am_name, sink_name_copy, AM_MAX_NAME_LENGTH);
         replace_whitespace_with_hash(am_name);
     }
+	}
+    ROUTER_FUNCTION_EXIT;
 }
 
 /**
@@ -1036,22 +1050,15 @@ static pa_hook_result_t hook_callback_source_output_unlink(pa_core *c, pa_source
     return PA_HOOK_OK;
 }
 
-/**
- * @brief The hook/callback function called from the pulseaudio main loop whenever a new sink appears in the system.
- * @param: c: The pointer to pulseaudio core.
- *         sink: The sink pointer.
- *         u: The pointer to the user data.
- * @return pa_hook_result: The result of the hook function.
- */
-static pa_hook_result_t hook_callback_sink_new(pa_core *c, pa_sink *sink, struct userdata *u) {
+static pa_hook_result_t register_sink_new(pa_core *c, pa_proplist* proplist, pa_cvolume* sink_volume,pa_sink* sink, struct userdata *u) {
     ROUTER_FUNCTION_ENTRY;
     am_sink_register_t sink_register;
     pa_assert(c);
-    pa_assert(sink);
     pa_assert(u);
 
     memset(&sink_register, 0, sizeof(am_sink_register_t));
-    get_am_name_from_device_description(sink->proplist,sink_register.name);
+    get_am_name_from_device_description(proplist,sink_register.name);
+
     if ( 0 == am_name_to_id(sink_register.name, u->sink_map) ) {
         pa_log_debug("sink Name=%s", sink_register.name);
         sink_register.domain_id = ((am_domain_register_t*) u->domain)->domain_id;
@@ -1068,7 +1075,6 @@ static pa_hook_result_t hook_callback_sink_new(pa_core *c, pa_sink *sink, struct
             u->sink_map[index].id = 0;
             u->sink_map[index].builtin = true;
             u->sink_map[index].data = sink;
-            pa_cvolume* sink_volume = (pa_cvolume*) pa_sink_get_volume(sink, true);
             int16_t audiomanagervolume;
             audiomanagervolume = ((0.04577706569008926527809567406729) * sink_volume->values[0] ) - 3000;
             sink_register.volume = audiomanagervolume;
@@ -1076,7 +1082,7 @@ static pa_hook_result_t hook_callback_sink_new(pa_core *c, pa_sink *sink, struct
              * Convert the range [0-100] -> [0-65535]
              */
             sink_register.main_volume = sink_volume->values[0] * 100 / 65535;
-	    pa_log_info("sink volume=%d , main_volume=%d",sink_register.volume,sink_register.main_volume );
+	        pa_log_info("sink volume=%d , main_volume=%d",sink_register.volume,sink_register.main_volume );
             router_dbusif_routing_register_sink(u, &sink_register);
         }
     }
@@ -1089,21 +1095,35 @@ static pa_hook_result_t hook_callback_sink_new(pa_core *c, pa_sink *sink, struct
 }
 
 /**
- * @brief The hook/callback function called from the pulseaudio main loop whenever any source appears in system.
+ * @brief The hook/callback function called from the pulseaudio main loop whenever a new sink appears in the system.
  * @param: c: The pointer to pulseaudio core.
- *         source: The sink input pointer.
+ *         sink: The sink pointer.
  *         u: The pointer to the user data.
  * @return pa_hook_result: The result of the hook function.
  */
-static pa_hook_result_t hook_callback_source_new(pa_core *c, pa_source *source, struct userdata *u) {
+
+static pa_hook_result_t hook_callback_sink_new(pa_core *c, pa_sink_new_data *sink, struct userdata *u) {
+    ROUTER_FUNCTION_ENTRY;
+    pa_assert(c);
+    pa_assert(sink);
+    pa_assert(u);
+    register_sink_new(c,sink->proplist,&(sink->volume),NULL,u);
+#if MODULE_ROUTER_EXTRA_LOGS
+    print_maps(u);
+#endif
+
+    ROUTER_FUNCTION_EXIT;
+    return PA_HOOK_OK;
+}
+
+static pa_hook_result_t register_source_new(pa_core *c, pa_proplist* proplist, pa_cvolume* source_volume, pa_source *source, struct userdata *u) {
     ROUTER_FUNCTION_ENTRY;
     am_source_register_t source_register;
     pa_assert(c);
-    pa_assert(source);
     pa_assert(u);
 
     memset(&source_register, 0, sizeof(am_source_register_t));
-    get_am_name_from_device_description(source->proplist,source_register.name);
+    get_am_name_from_device_description(proplist,source_register.name);
     if ( 0 != am_name_to_id(source_register.name, u->source_map) ) {
         pa_log_debug("source name=%s", source_register.name);
         source_register.domain_id = ((am_domain_register_t*) (u->domain))->domain_id;
@@ -1121,7 +1141,6 @@ static pa_hook_result_t hook_callback_source_new(pa_core *c, pa_source *source, 
             u->source_map[index].id = 0;
             u->source_map[index].builtin = true;
             u->source_map[index].data = source;
-            pa_cvolume* source_volume = (pa_cvolume*) pa_source_get_volume(source, true);
             int16_t audiomanagervolume;
             audiomanagervolume = ((0.04577706569008926527809567406729) * source_volume->values[0] ) - 3000;
             source_register.volume = source_volume->values[0];
@@ -1129,6 +1148,27 @@ static pa_hook_result_t hook_callback_source_new(pa_core *c, pa_source *source, 
             router_dbusif_routing_register_source(u, &source_register);
         }
     }
+#if MODULE_ROUTER_EXTRA_LOGS
+    print_maps(u);
+#endif
+    ROUTER_FUNCTION_EXIT;
+    return PA_HOOK_OK;
+}
+
+/**
+ * @brief The hook/callback function called from the pulseaudio main loop whenever any source appears in system.
+ * @param: c: The pointer to pulseaudio core.
+ *         source: The sink input pointer.
+ *         u: The pointer to the user data.
+ * @return pa_hook_result: The result of the hook function.
+ */
+static pa_hook_result_t hook_callback_source_new(pa_core *c, pa_source_new_data* source, struct userdata *u) {
+    ROUTER_FUNCTION_ENTRY;
+    am_source_register_t source_register;
+    pa_assert(c);
+    pa_assert(source);
+    pa_assert(u);
+    register_source_new(c,source->proplist,&(source->volume),NULL,u);
 #if MODULE_ROUTER_EXTRA_LOGS
     print_maps(u);
 #endif
@@ -1329,7 +1369,8 @@ static void router_discover_register_source(struct userdata* u) {
     ROUTER_FUNCTION_ENTRY;
     PA_IDXSET_FOREACH(source, u->core->sources, index)
     {
-        hook_callback_source_new(u->core, source, u);
+        pa_cvolume* source_volume = (pa_cvolume*) pa_source_get_volume(source, true);
+        register_source_new(u->core, source->proplist,source_volume,source, u);
     }
 #if MODULE_ROUTER_EXTRA_LOGS
     print_maps(u);
@@ -1348,7 +1389,8 @@ static void router_discover_register_sink(struct userdata* u) {
     uint32_t index;
     PA_IDXSET_FOREACH(sink, u->core->sinks, index)
     {
-        hook_callback_sink_new(u->core, sink, u);
+        pa_cvolume* sink_volume = (pa_cvolume*) pa_sink_get_volume(sink, true);
+        register_sink_new(u->core, sink->proplist, sink_volume,sink, u);
     }
 #if MODULE_ROUTER_EXTRA_LOGS
     print_maps(u);
@@ -1779,6 +1821,27 @@ static uint16_t cb_routing_async_set_sink_volume(struct userdata *u, uint16_t ha
                 set_pa_volume(&channelVolume, sink->soft_volume.channels, (uint32_t) volume_norm);
                 pa_sink_set_volume(sink, &channelVolume, false, false);
             }
+            else {
+                /*
+                *Try to find the sink from the user structure
+                */
+                 uint32_t index;
+                 PA_IDXSET_FOREACH(sink, u->core->sinks, index) {
+                     char sink_am_name[AM_MAX_NAME_LENGTH];
+                     get_am_name_from_device_description(sink->proplist,sink_am_name);
+                     if(sink_am_name[0]!='\0')
+                     {
+                         int sink_map_index = get_map_index_from_name(sink_am_name,u->sink_map);
+                         if(sink_map_index != -1)
+                         {
+                             u->sink_map[sink_map_index].data = sink;
+                             set_pa_volume(&channelVolume, sink->soft_volume.channels, (uint32_t) volume_norm);
+                             pa_sink_set_volume(sink, &channelVolume, false, false);
+                             break;
+                         }
+                     }
+                 }
+            }
         }
     } else {
         index = get_free_map_index(u->sink_map);
@@ -1832,6 +1895,27 @@ static uint16_t cb_routing_async_set_source_volume(struct userdata *u, uint16_t 
             if ( source != NULL ) {
                 set_pa_volume(&channelVolume, source->real_volume.channels, (uint32_t) volume_norm);
                 pa_source_set_volume(source, &channelVolume, false, false);
+            }
+            else {
+                uint32_t index;
+                ROUTER_FUNCTION_ENTRY;
+                PA_IDXSET_FOREACH(source, u->core->sources, index)
+                {
+                    char source_am_name[AM_MAX_NAME_LENGTH];
+                    get_am_name_from_device_description(source->proplist,source_am_name);
+                    if(source_am_name[0]!='\0')
+                    {
+                        int source_map_index = get_map_index_from_name(source_am_name,u->sink_map);
+                        if(source_map_index != -1)
+                        {
+                            u->sink_map[source_map_index].data = source;
+                            set_pa_volume(&channelVolume, source->real_volume.channels, (uint32_t) volume_norm);
+                            pa_source_set_volume(source, &channelVolume, false, false);
+                            break;
+                        }
+                    }
+                }
+
             }
         }
     } else {
@@ -2050,7 +2134,7 @@ void pa__done(pa_module *m) {
     ROUTER_FUNCTION_ENTRY;
     if ( m ) {
         struct userdata *u = m->userdata;
-        router_dbusif_done(u->dbusif);
+        router_dbusif_done(u);
         if ( u ) {
             if ( u->h ) {
                 if ( u->h->hook_slot_sink_input_put ) {
@@ -2061,6 +2145,8 @@ void pa__done(pa_module *m) {
                 }
                 pa_xfree(u->h);
             }
+            pa_hashmap_free(u->main_connection_map);;
+            pa_hashmap_free(u->connection_map);
             MODULE_ROUTER_FREE(u->domain);
             pa_xfree(u);
         }
