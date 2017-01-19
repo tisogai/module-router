@@ -743,8 +743,10 @@ router_dbusif *router_dbusif_init(struct userdata *u, router_init_data_t* init_d
  * @return void
  */
 
-void router_dbusif_done(struct router_dbusif *routerif) {
+void router_dbusif_done(struct userdata *u) {
     ROUTER_FUNCTION_ENTRY;
+    free_routerif(u);
+    router_dbusif* routerif = u->dbusif;
     MODULE_ROUTER_FREE(routerif->pulse_router_dbus_return_interface_name);
     MODULE_ROUTER_FREE(routerif->pulse_router_dbus_name);
     MODULE_ROUTER_FREE(routerif->pulse_router_dbus_interface_name);
@@ -757,6 +759,7 @@ void router_dbusif_done(struct router_dbusif *routerif) {
     MODULE_ROUTER_FREE(routerif->am_routing_dbus_path);
     MODULE_ROUTER_FREE(routerif->am_watch_rule);
     MODULE_ROUTER_FREE(routerif);
+
     ROUTER_FUNCTION_EXIT;
 
 }
@@ -1677,7 +1680,6 @@ static void free_routerif(struct userdata *u) {
 
             pa_dbus_connection_unref(routerif->conn);
         }
-        pa_xfree(routerif);
     }
     ROUTER_FUNCTION_EXIT;
 }
