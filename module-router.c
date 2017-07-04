@@ -641,19 +641,14 @@ static bool is_valid_name(const char* name ) {
     if((name == NULL)) {
         return false;
     }
-    if(name != NULL)
-    {
-    	if(name[0] == '\0')
-    	{
-    		return false;
-    	}
+    if(name[0] == '\0') {
+        return false;
     }
     ROUTER_FUNCTION_EXIT;
     return is_valid;
 }
 
-static bool is_stream_for_probe(pa_proplist* proplist)
-{
+static bool is_stream_for_probe(pa_proplist* proplist) {
     /*
      * qt framework uses gstreamer for audio playback. Gstreamer creates one stream with media.name
      * property 'pulseaudio probe', to get the capability, I guess. These streams are
@@ -665,8 +660,7 @@ static bool is_stream_for_probe(pa_proplist* proplist)
     bool probestream =false;
     char* media_name = (char*) pa_proplist_gets(proplist,PA_PROP_MEDIA_NAME);
 
-    if((media_name != NULL) && (0==strcmp(media_name,"pulsesink probe")))
-    {
+    if((media_name != NULL) && (0==strcmp(media_name,"pulsesink probe"))) {
         pa_log_info("is_stream_for_probe probe found");
         probestream = true;
     }
@@ -728,16 +722,15 @@ static void get_am_name_for_sink_source_stream(pa_proplist* proplist, char* am_n
  *         am_name: The audiomanager name of the sink.
  */
 static void get_am_name_from_device_description(pa_proplist* proplist, char* am_name) {
-	ROUTER_FUNCTION_ENTRY;
-	if(proplist != NULL)
-	{
-    char *sink_name_copy = (char*) pa_proplist_gets(proplist,
-                                                    PA_PROP_DEVICE_DESCRIPTION);
-    if(is_valid_name(sink_name_copy)) {
-        strncpy(am_name, sink_name_copy, AM_MAX_NAME_LENGTH);
-        replace_whitespace_with_hash(am_name);
+    ROUTER_FUNCTION_ENTRY;
+    if(proplist != NULL) {
+        char *sink_name_copy = (char*) pa_proplist_gets(proplist,
+                                                        PA_PROP_DEVICE_DESCRIPTION);
+        if(is_valid_name(sink_name_copy)) {
+            strncpy(am_name, sink_name_copy, AM_MAX_NAME_LENGTH);
+            replace_whitespace_with_hash(am_name);
+        }
     }
-	}
     ROUTER_FUNCTION_EXIT;
 }
 
