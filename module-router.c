@@ -2034,11 +2034,11 @@ int pa__init(pa_module *m) {
             PA_HOOK_LATE + 30, (pa_hook_cb_t) hook_callback_source_output_put, u);
     u->h->hook_slot_source_output_unlink = pa_hook_connect(&m->core->hooks[PA_CORE_HOOK_SOURCE_OUTPUT_UNLINK],
             PA_HOOK_LATE + 30, (pa_hook_cb_t) hook_callback_source_output_unlink, u);
-    u->h->hook_slot_sink_new = pa_hook_connect(&m->core->hooks[PA_CORE_HOOK_SINK_NEW], PA_HOOK_LATE + 30,
+    u->h->hook_slot_sink_new = pa_hook_connect(&m->core->hooks[PA_CORE_HOOK_SINK_FIXATE], PA_HOOK_LATE + 30,
             (pa_hook_cb_t) hook_callback_sink_new, u);
     u->h->hook_slot_sink_input_new = pa_hook_connect(&m->core->hooks[PA_CORE_HOOK_SINK_INPUT_NEW], PA_HOOK_LATE + 30,
             (pa_hook_cb_t) hook_callback_sink_input_new, u);
-    u->h->hook_slot_source_new = pa_hook_connect(&m->core->hooks[PA_CORE_HOOK_SOURCE_NEW], PA_HOOK_LATE + 30,
+    u->h->hook_slot_source_new = pa_hook_connect(&m->core->hooks[PA_CORE_HOOK_SOURCE_FIXATE], PA_HOOK_LATE + 30,
             (pa_hook_cb_t) hook_callback_source_new, u);
     u->h->hook_slot_source_output_new = pa_hook_connect(&m->core->hooks[PA_CORE_HOOK_SOURCE_OUTPUT_NEW],
             PA_HOOK_LATE + 30, (pa_hook_cb_t) hook_callback_source_output_new, u);
